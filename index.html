@@ -53,7 +53,12 @@ canvas{
 }
 #hud-title span{color:#ff7043}
 
-.hud-bottom{bottom:12px;gap:10px}
+.hud-bottom{
+ bottom:12px;
+ justify-content:space-between;
+ gap:10px;
+}
+.lives-group{display:flex;align-items:center;gap:10px}
 .lives-label{
  font-size:clamp(9px,2.7vw,11px);letter-spacing:1.6px;color:#e6e9f7;
 }
@@ -66,6 +71,12 @@ canvas{
 .pip.on{
  background:#38b6ff;
  box-shadow:0 0 10px rgba(56,182,255,.9);
+}
+#fps{
+ font-size:clamp(9px,2.5vw,10px);
+ letter-spacing:1.1px;
+ color:#858ba9;
+ white-space:nowrap;
 }
 
 /* ---------- divider ---------- */
@@ -124,8 +135,11 @@ select{cursor:pointer}
   </div>
 
   <div class="hud hud-bottom">
-   <span class="lives-label">LIVES</span>
-   <div id="lives-pips"></div>
+   <div class="lives-group">
+    <span class="lives-label">LIVES</span>
+    <div id="lives-pips"></div>
+   </div>
+   <span id="fps">FPS --</span>
   </div>
  </div>
 
@@ -140,7 +154,7 @@ select{cursor:pointer}
   <button id="start">START GAME</button>
  </div>
 
- <div id="message">Your best scores are saved :P</div>
+ <div id="message">Avoid the red hazards.</div>
 </div>
 
 <script>
@@ -161,9 +175,14 @@ const modes={
 let best=0;
 try{best=Math.max(0,Number(localStorage.getItem("orbitalDodgeBest"))||0)}catch(e){}
 
-let running=false,score=0,lives=2,angle=-Math.PI/2,dir=1;
+/* Start with one life. */
+let running=false,score=0,lives=1,angle=-Math.PI/2,dir=1;
 let elapsed=0,last=0,spawn=0,bonusSpawn=0;
 let hazards=[],bonuses=[],particles=[],flash=0,mode=modes.medium;
+let rafId=null;
+
+/* FPS tracking */
+let fps=0,fpsTimer=0,fpsFrames=0;
 
 /* ---- lives pips ---- */
 const pips=[];
@@ -181,9 +200,9 @@ function player(){
  return {x:cx+Math.cos(angle)*orbit,y:cy+Math.sin(angle)*orbit};
 }
 
-// The player grows with every extra life beyond the starting two.
-function playerRadius(){return 8+Math.max(0,lives-2)*2.4}
-function playerColor(){return lives>=3?"#43baff":"#ff713e"}
+// The player grows with every extra life beyond the first.
+function playerRadius(){return 8+(lives-1)*2.4}
+function playerColor(){return lives>=2?"#43baff":"#ff713e"}
 
 function hud(){
  $("hud-score").textContent=score;
@@ -231,16 +250,23 @@ function spawnBonus(){
 }
 
 function start(){
+ if(rafId!==null){
+  cancelAnimationFrame(rafId);
+  rafId=null;
+ }
+
  mode=modes[$("difficulty").value];
- running=true;score=0;lives=2;
+ running=true;score=0;lives=1;
  angle=-Math.PI/2;dir=1;elapsed=0;
  spawn=.3;bonusSpawn=2;
  hazards=[];bonuses=[];particles=[];flash=0;
  last=performance.now();
- $("message").textContent="Avoid the red hazards.";
+ fps=0;fpsTimer=0;fpsFrames=0;
+ $("fps").textContent="FPS --";
+ $("message").textContent="One life: orange. Two or more: blue!";
  $("start").textContent="RESTART";
  hud();
- requestAnimationFrame(loop);
+ rafId=requestAnimationFrame(loop);
 }
 
 function end(){
@@ -334,12 +360,20 @@ function loop(now){
  const dt=Math.min((now-last)/1000,.035);
  last=now;elapsed+=dt;
 
+ // FPS counter
+ fpsTimer+=dt;fpsFrames++;
+ if(fpsTimer>=0.5){
+  fps=Math.round(fpsFrames/fpsTimer);
+  fpsTimer=0;fpsFrames=0;
+  $("fps").textContent="FPS "+fps;
+ }
+
  // One point per second.
  score=Math.floor(elapsed);
  flash=Math.max(0,flash-dt*3);
 
- // Player moves at 65% of the configured speed.
- angle+=dir*mode.turn*.65*dt;
+ // Player moves at 0.4× the previous orbit speed.
+ angle+=dir*mode.turn*.65*.4*dt;
 
  spawn-=dt;
  if(spawn<=0){
@@ -386,7 +420,7 @@ function loop(now){
    if(lives<MAX_LIVES){
     lives++;
     $("message").textContent=
-     lives>=3?"EXTRA LIFE! You're blue — and bigger!":"EXTRA LIFE!";
+     lives>=2?"EXTRA LIFE! You're blue — and bigger!":"EXTRA LIFE!";
    }else{
     // Award exactly 20 bonus points without changing the timer.
     score+=20;
@@ -412,7 +446,7 @@ function loop(now){
  }
 
  hud();draw();
- requestAnimationFrame(loop);
+ rafId=requestAnimationFrame(loop);
 }
 
 draw();hud();
